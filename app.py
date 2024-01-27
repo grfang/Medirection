@@ -40,7 +40,7 @@ def get_users(phone_number):
         chatpage_info[idx] = (chatpage_info[idx][2], doctorName)
     
     if chatpage_info:
-        blurb_list = {'chats': [{'summary': chatpage_info[idx][0], 'doctor': chatpage_info[idx][1]} for idx in range(len(chatpage_info))]}
+        blurb_list = [{'summary': chatpage_info[idx][0], 'doctor': chatpage_info[idx][1]} for idx in range(len(chatpage_info))]
         return jsonify({'chatpage_info': blurb_list})
     else:
         return jsonify({'chatpage_info': None})
