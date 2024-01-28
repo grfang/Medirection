@@ -43,9 +43,6 @@ conn = psycopg2.connect(
 # Create a cursor to interact with the database
 cursor = conn.cursor()
 
-# cursor.close()
-# conn.close()
-
 @app.route('/signup', methods=['POST'])
 def signup(phone_number, firstname, lastname, role, language):
     with open('lang_codes.json', 'r') as f:
@@ -90,9 +87,11 @@ def get_dashboard(user_id):
 def get_messages(channelid):
     cursor.execute("SELECT ogaudiourl, transcription, translation, senderid, timestamp, transaudiourl FROM messages WHERE channelid = '%s' SORT BY timestamp;" % (channelid))
     chatroom_messages = cursor.fetchall()
+    cursor.execute("SELECT status FROM channels WHERE channelid = '%s';" % (channelid))
+    channel_status = cursor.fetchone()
     
     if chatroom_messages:
-        return jsonify({'messages': [{'ogaudiourl': chatroom_messages[idx][0], 'transcription': chatroom_messages[idx][1], 'translation': chatroom_messages[idx][2], 'senderid': chatroom_messages[idx][3], 'timestamp': chatroom_messages[idx][4], 'transaudiourl': chatroom_messages[idx][5]} for idx in range(len(chatroom_messages))]})
+        return jsonify({'messages': [{'ogaudiourl': chatroom_messages[idx][0], 'transcription': chatroom_messages[idx][1], 'translation': chatroom_messages[idx][2], 'senderid': chatroom_messages[idx][3], 'timestamp': chatroom_messages[idx][4], 'transaudiourl': chatroom_messages[idx][5]} for idx in range(len(chatroom_messages))], 'channel_status': channel_status[0]})
     else:
         return jsonify({'messages': None})
 
@@ -252,6 +251,27 @@ def change_speed_double(translation, receiver_id):
     os.remove(out.name)
 
     return jsonify({'url': blob.public_url})
+
+@app.route('/close', methods=['POST'])
+def close(channel_id):
+    query = "UPDATE channels SET status = 'closed' WHERE channelid = %s;"
+    cursor.execute(query, (channel_id))
+
+@app.route('/create', methods=['GET', 'POST'])
+def create(doctor_id, phone_number):
+    query = "SELECT id, firstname, lastname FROM users WHERE phonenumber = %s;"
+    cursor.execute(query, (phone_number))
+    user_info = cursor.fetchone()
+    
+    if not user_info:
+        return jsonify({'user': None})
+    
+    channel_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    query = "INSERT INTO channels(channelid, doctorid, patientid, summary, status) VALUES(%s, %s, %s, %s, %s);"
+    cursor.execute(query, (channel_id, doctor_id, user_info[0], "", "open"))
+    conn.commit()
+    
+    return jsonify({'user': {'user_id': user_info[0], 'name': user_info[1] + " " + user_info[2]}})
 
 if __name__ == '__main__':
     app.run()
