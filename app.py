@@ -14,7 +14,7 @@ from deepgram import DeepgramClient, DeepgramClientOptions, PrerecordedOptions
 from google.cloud import translate, texttospeech
 
 from firebase_admin import credentials, initialize_app, storage
-cred = credentials.Certificate("./firebase.json")
+cred = credentials.Certificate("./service-account.json")
 initialize_app(cred, {'storageBucket': 'vitalvoice-8acf9.appspot.com'})
 
 load_dotenv()
@@ -168,29 +168,16 @@ def receive_message(translation, receiver_id):
     
     response = TTS_CLIENT.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
     
-    def temp_opener(name, flag, mode=0o777):
-        return os.open(name, flag | os.O_TEMPORARY, mode)
+    with open("output.mp3", "wb") as out:
+        out.write(response.audio_content)
+        
+    bucket = storage.bucket()
+    blob = bucket.blob(out.name)
+    blob.upload_from_filename("./" + out.name)
+    blob.make_public()
+    print(blob.public_url)
 
-    with tempfile.NamedTemporaryFile(suffix=".mp3", mode="w+b", dir="./", delete=False) as temp_file:
-        # Write the response to the output file.
-        temp_file.write(response.audio_content)
-        temp_file.flush()
-        with open(temp_file.name, "rb", opener=temp_opener) as temp_file:
-            bucket = storage.bucket(temp_file.name)
-            blob = bucket.blob(temp_file.name)
-            blob.upload_from_filename(temp_file.name)
-            blob.make_public()
-
-    # fd, path = tempfile.mkstemp()
-    # try:
-    #     with os.fdopen(fd, 'wb') as fileTemp:
-    #         fileTemp.write(response.audio_content)
-    #         bucket = storage.bucket()
-    #         blob = bucket.blob(fileTemp.name)
-    #         blob.upload_from_filename(fileTemp.name)
-    #         blob.make_public()
-    # finally:
-    #     os.remove(path)
+    os.remove(out.name)
 
     print("your file url", blob.public_url)    
     
