@@ -153,10 +153,10 @@ def send_message(audio_url, channel_id, doctor_id, sender_id):
     query = "INSERT INTO messages(messageid, channelid, timestamp, senderid, transcription, translation, ogaudiourl) VALUES(%s, %s, %s, %s, %s, %s, %s, %s)"
     cursor.execute(query, (message_id, channel_id, timestamp, sender_id, transcription, translation, audio_url, ""))
     conn.commit()
-    return jsonify({'transcription': transcription, 'translation': translation})
+    return jsonify({'transcription': transcription, 'translation': translation, 'message_id': message_id})
 
 @app.route('/receive', methods=['GET'])
-def receive_message(translation, receiver_id):
+def receive_message(translation, receiver_id, message_id):
     cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
     lang = cursor.fetchone()[0]
     
@@ -168,21 +168,21 @@ def receive_message(translation, receiver_id):
     
     response = TTS_CLIENT.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
     
-    with open("output.mp3", "wb") as out:
+    with open(f"{str(int(datetime.now().timestamp()))}.mp3", "wb") as out:
         out.write(response.audio_content)
         
     bucket = storage.bucket()
     blob = bucket.blob(out.name)
     blob.upload_from_filename("./" + out.name)
     blob.make_public()
-    print(blob.public_url)
-
     os.remove(out.name)
-
-    print("your file url", blob.public_url)    
     
-receive_message("Hello world", "3")
+    query = "UPDATE messages SET transaudiourl = %s WHERE messageid = %s;"
+    cursor.execute(query, (blob.public_url, message_id))
+    conn.commit()
 
+    return jsonify({'url': blob.public_url})
+    
 #@app.route('/receive/half', methods=['GET'])
 
 #@app.route('/receive/double', methods=['GET'])
