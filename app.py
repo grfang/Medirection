@@ -1,5 +1,5 @@
 # backend/app.py
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import json
 import psycopg2
 import random
@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 from flask_socketio import SocketIO
 from flask_socketio import send, emit
+from flask_cors import CORS
 
 from dotenv import load_dotenv
 from deepgram import DeepgramClient, PrerecordedOptions
@@ -21,6 +22,7 @@ initialize_app(cred, {'storageBucket': 'vitalvoice-8acf9.appspot.com'})
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 socketio = SocketIO(app)
 
 PROJECT_ID = "medirection"
@@ -56,9 +58,23 @@ def test_connect(auth):
 @socketio.on('disconnect')
 def test_disconnect():
     print('Client disconnected')
+    
+@app.route('/', methods=['GET'])
+def test():
+    return jsonify({'exit_code': "SUCESS"})
 
-@app.route('/signup', methods=['POST'])
-def signup(phone_number, firstname, lastname, role, language):
+@app.route('/signup', methods=['GET'])
+def signup():
+    print("made it into signup")
+    query = request.args.to_dict()
+    phone_number = query['phone_number']
+    firstname = query['firstname']
+    lastname = query['lastname']
+    role = query['role']
+    language = query['language']
+    
+    print(f"got stuff {phone_number}, {firstname}, {lastname}, {role}, {language}")
+    
     with open('lang_codes.json', 'r') as f:
         lang_codes = json.loads(f.read())
 
@@ -175,7 +191,7 @@ def send_message(audio_url, channel_id, doctor_id, sender_id):
     print(transcription)
     print(translation)
     message_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-    timestamp = str(int(datetime.now().timestamp()))
+    timestamp = int(datetime.now().timestamp())
     query = "INSERT INTO messages(messageid, channelid, timestamp, senderid, transcription, translation, ogaudiourl) VALUES(%s, %s, %s, %s, %s, %s, %s, %s)"
     cursor.execute(query, (message_id, channel_id, timestamp, sender_id, transcription, translation, audio_url, ""))
     conn.commit()
@@ -438,4 +454,5 @@ def get_action_plans(user_id):
         return jsonify({'todos': None})
 
 if __name__ == '__main__':
-    socketio.run(app)
+    # socketio.run(app)
+    app.run(host='0.0.0.0')
