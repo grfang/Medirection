@@ -155,7 +155,7 @@ def send_message(audio_url, channel_id, doctor_id, sender_id):
     conn.commit()
     return jsonify({'transcription': transcription, 'translation': translation, 'message_id': message_id})
 
-@app.route('/receive', methods=['GET'])
+@app.route('/receive', methods=['POST'])
 def receive_message(translation, receiver_id, message_id):
     cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
     lang = cursor.fetchone()[0]
@@ -182,10 +182,78 @@ def receive_message(translation, receiver_id, message_id):
     conn.commit()
 
     return jsonify({'url': blob.public_url})
-    
-#@app.route('/receive/half', methods=['GET'])
 
-#@app.route('/receive/double', methods=['GET'])
+@app.route('/receive/norm', methods=['GET'])
+def change_speed_norm(translation, receiver_id):
+    cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
+    lang = cursor.fetchone()[0]
+    
+    synthesis_input = texttospeech.SynthesisInput(text=translation)
+    voice = texttospeech.VoiceSelectionParams(
+        language_code=lang
+        )
+    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3, speaking_rate=1.0)
+    
+    response = TTS_CLIENT.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+    
+    with open(f"{str(int(datetime.now().timestamp()))}.mp3", "wb") as out:
+        out.write(response.audio_content)
+        
+    bucket = storage.bucket()
+    blob = bucket.blob(out.name)
+    blob.upload_from_filename("./" + out.name)
+    blob.make_public()
+    os.remove(out.name)
+
+    return jsonify({'url': blob.public_url})
+    
+@app.route('/receive/half', methods=['GET'])
+def change_speed_half(translation, receiver_id):
+    cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
+    lang = cursor.fetchone()[0]
+    
+    synthesis_input = texttospeech.SynthesisInput(text=translation)
+    voice = texttospeech.VoiceSelectionParams(
+        language_code=lang
+        )
+    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3, speaking_rate=0.5)
+    
+    response = TTS_CLIENT.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+    
+    with open(f"{str(int(datetime.now().timestamp()))}.mp3", "wb") as out:
+        out.write(response.audio_content)
+        
+    bucket = storage.bucket()
+    blob = bucket.blob(out.name)
+    blob.upload_from_filename("./" + out.name)
+    blob.make_public()
+    os.remove(out.name)
+
+    return jsonify({'url': blob.public_url})
+
+@app.route('/receive/double', methods=['GET'])
+def change_speed_double(translation, receiver_id):
+    cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
+    lang = cursor.fetchone()[0]
+    
+    synthesis_input = texttospeech.SynthesisInput(text=translation)
+    voice = texttospeech.VoiceSelectionParams(
+        language_code=lang
+        )
+    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3, speaking_rate=2.0)
+    
+    response = TTS_CLIENT.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+    
+    with open(f"{str(int(datetime.now().timestamp()))}.mp3", "wb") as out:
+        out.write(response.audio_content)
+        
+    bucket = storage.bucket()
+    blob = bucket.blob(out.name)
+    blob.upload_from_filename("./" + out.name)
+    blob.make_public()
+    os.remove(out.name)
+
+    return jsonify({'url': blob.public_url})
 
 # if __name__ == '__main__':
 #     app.run()
