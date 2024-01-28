@@ -7,6 +7,7 @@ import string
 from datetime import datetime
 import os
 from flask_socketio import SocketIO
+from flask_socketio import send, emit
 
 from dotenv import load_dotenv
 from deepgram import DeepgramClient, PrerecordedOptions
