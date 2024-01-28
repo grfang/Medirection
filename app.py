@@ -89,7 +89,10 @@ def signup():
         return jsonify({'user_id': None})
     
 @app.route('/login', methods=['GET'])
-def login(phone_number):
+def login():
+    query = request.args.to_dict()
+    phone_number = query['phone_number']
+
     cursor.execute("SELECT id FROM users WHERE phonenumber = '%s';" % (phone_number))
     user = cursor.fetchone() # user corresponding to phone number
     
@@ -99,7 +102,10 @@ def login(phone_number):
         return jsonify({'user_id': None})
 
 @app.route('/dashboard', methods=['GET'])
-def get_dashboard(user_id):
+def get_dashboard():
+    query = request.args.to_dict()
+    user_id = query['user_id']
+
     cursor.execute("SELECT channelid, doctorid, summary FROM channels WHERE user_id = '%s';" % (user_id))
     chatpage_info = cursor.fetchall() # chatpage_info[0] = channelid, chatpage_info[1] = doctorid, chatpage_info[2] = summary
     for idx in range(len(chatpage_info)):
@@ -117,7 +123,10 @@ def get_dashboard(user_id):
         return jsonify({'chatpage_info': None})
 
 @app.route('/chatroom', methods=['GET'])
-def get_messages(channelid):
+def get_messages():
+    query = request.args.to_dict()
+    channelid = query['channelid']
+
     cursor.execute("SELECT ogaudiourl, transcription, translation, senderid, timestamp, transaudiourl FROM messages WHERE channelid = '%s' ORDER BY timestamp;" % (channelid))
     chatroom_messages = cursor.fetchall()
     cursor.execute("SELECT status FROM channels WHERE channelid = '%s';" % (channelid))
@@ -185,7 +194,13 @@ def get_translation(transcription, doctor_id, sender_id):
     return translation.translated_text
 
 @app.route('/send', methods=['POST'])
-def send_message(audio_url, channel_id, doctor_id, sender_id):
+def send_message():
+    query = request.args.to_dict()
+    audio_url = query['audio_url']
+    channel_id = query['channel_id']
+    doctor_id = query['doctor_id']
+    sender_id = query['sender_id']
+
     transcription = get_transcription(audio_url, sender_id).replace("'", r"\'")
     translation = get_translation(transcription, doctor_id, sender_id).replace("'", r"\'")
     print(transcription)
@@ -204,7 +219,12 @@ def send_message(audio_url, channel_id, doctor_id, sender_id):
     return jsonify({'transcription': transcription, 'translation': translation, 'message_id': message_id, 'pfp': pfp_url[0]})
 
 @app.route('/receive', methods=['POST'])
-def receive_message(translation, receiver_id, message_id):
+def receive_message():
+    query = request.args.to_dict()
+    translation = query['translation']
+    receiver_id = query['receiver_id']
+    message_id = query['message_id']
+
     cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
     lang = cursor.fetchone()[0]
     
@@ -242,7 +262,11 @@ def receive_message(translation, receiver_id, message_id):
     return jsonify({'url': blob.public_url, 'pfp': pfp_url[0]})
 
 @app.route('/receive/norm', methods=['GET'])
-def change_speed_norm(translation, receiver_id):
+def change_speed_norm():
+    query = request.args.to_dict()
+    translation = query['translation']
+    receiver_id = query['receiver_id']
+
     cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
     lang = cursor.fetchone()[0]
     
@@ -266,7 +290,11 @@ def change_speed_norm(translation, receiver_id):
     return jsonify({'url': blob.public_url})
     
 @app.route('/receive/half', methods=['GET'])
-def change_speed_half(translation, receiver_id):
+def change_speed_half():
+    query = request.args.to_dict()
+    translation = query['translation']
+    receiver_id = query['receiver_id']
+
     cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
     lang = cursor.fetchone()[0]
     
@@ -290,7 +318,11 @@ def change_speed_half(translation, receiver_id):
     return jsonify({'url': blob.public_url})
 
 @app.route('/receive/double', methods=['GET'])
-def change_speed_double(translation, receiver_id):
+def change_speed_double():
+    query = request.args.to_dict()
+    translation = query['translation']
+    receiver_id = query['receiver_id']
+
     cursor.execute("SELECT language FROM users WHERE id = '%s';" % (receiver_id))
     lang = cursor.fetchone()[0]
     
@@ -313,7 +345,7 @@ def change_speed_double(translation, receiver_id):
 
     return jsonify({'url': blob.public_url})
 
-def summarize(convo, doctor_lang_name, patient_lang_name):
+def summarize(convo, doctor_lang_name, patient_lang_name):    
     chat_completion = GPT_CLIENT.chat.completions.create(
         messages=[
             {"role": "system", "content": "You are a helper at a hospital whose job is to provide concise summaries of conversations during appointments and rephrase them in simple terms that someone in middle school could understand. Please read the following chat logs between a doctor and a patient. The messages from the doctor will be in " + doctor_lang_name + " and the messages patient will be in " + patient_lang_name + ", switching back and forth, separated by new lines. Provide a short 3 line summary of the conversation in english."},
@@ -368,7 +400,10 @@ def generate_todos(convo, doctor_lang_name, patient_lang_name):
     return chat_completion.choices[0].message.content.split(',')
 
 @app.route('/close', methods=['POST'])
-def close(channel_id):
+def close():
+    query = request.args.to_dict()
+    channel_id = query['channel_id']
+
     query = "UPDATE channels SET status = 'closed' WHERE channelid = %s;"
     cursor.execute(query, (channel_id))
 
@@ -410,7 +445,11 @@ def close(channel_id):
     return jsonify({'exit_code': 0})
 
 @app.route('/create', methods=['GET'])
-def create(doctor_id, phone_number):
+def create():
+    query = request.args.to_dict()
+    doctor_id = query['doctor_id']
+    phone_number = query['phone_number']
+
     query = "SELECT id, firstname, lastname FROM users WHERE phonenumber = %s;"
     cursor.execute(query, (phone_number))
     user_info = cursor.fetchone()
@@ -426,7 +465,11 @@ def create(doctor_id, phone_number):
     return jsonify({'user': {'user_id': user_info[0], 'name': user_info[1] + " " + user_info[2]}})
 
 @app.route('/settings', methods=['POST'])
-def change_language(user_id, language):
+def change_language():
+    query = request.args.to_dict()
+    user_id = query['user_id']
+    language = query['language']
+
     with open('lang_codes.json', 'r') as f:
         lang_codes = json.loads(f.read())
         
@@ -437,7 +480,10 @@ def change_language(user_id, language):
     return jsonify({'exit_code': 0})
     
 @app.route('/actionplan', methods=['GET'])
-def get_action_plans(user_id):
+def get_action_plans():
+    query = request.args.to_dict()
+    user_id = query['user_id']
+
     query = "SELECT doctorid, actions FROM todos WHERE userid = %s;"
     cursor.execute(query, (user_id))
     todo_info = cursor.fetchall()
