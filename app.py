@@ -5,12 +5,10 @@ import psycopg2
 import random
 import string
 from datetime import datetime
-import tempfile
 import os
-import stat
 
 from dotenv import load_dotenv
-from deepgram import DeepgramClient, DeepgramClientOptions, PrerecordedOptions
+from deepgram import DeepgramClient, PrerecordedOptions
 from google.cloud import translate, texttospeech
 
 from firebase_admin import credentials, initialize_app, storage
@@ -255,5 +253,5 @@ def change_speed_double(translation, receiver_id):
 
     return jsonify({'url': blob.public_url})
 
-# if __name__ == '__main__':
-#     app.run()
+if __name__ == '__main__':
+    app.run()
