@@ -6,6 +6,7 @@ import random
 import string
 from datetime import datetime
 import os
+from flask_socketio import SocketIO
 
 from dotenv import load_dotenv
 from deepgram import DeepgramClient, PrerecordedOptions
@@ -19,6 +20,7 @@ initialize_app(cred, {'storageBucket': 'vitalvoice-8acf9.appspot.com'})
 load_dotenv()
 
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 PROJECT_ID = "medirection"
 PARENT = f"projects/{PROJECT_ID}"
@@ -45,6 +47,14 @@ conn = psycopg2.connect(
 
 # Create a cursor to interact with the database
 cursor = conn.cursor()
+
+@socketio.on('connect')
+def test_connect(auth):
+    emit('my response', {'data': 'Connected'})
+
+@socketio.on('disconnect')
+def test_disconnect():
+    print('Client disconnected')
 
 @app.route('/signup', methods=['POST'])
 def signup(phone_number, firstname, lastname, role, language):
@@ -395,4 +405,4 @@ def get_action_plans(user_id):
         return jsonify({'todos': None})
 
 if __name__ == '__main__':
-    app.run()
+    socketio.run(app)
