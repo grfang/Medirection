@@ -273,5 +273,14 @@ def create(doctor_id, phone_number):
     
     return jsonify({'user': {'user_id': user_info[0], 'name': user_info[1] + " " + user_info[2]}})
 
+@app.route('/settings', methods=['POST'])
+def change_language(user_id, language):
+    with open('lang_codes.json', 'r') as f:
+        lang_codes = json.loads(f.read())
+        
+    query = "UPDATE users SET language = %s WHERE id = %s;"
+    cursor.execute(query, (lang_codes[language], user_id))
+    conn.commit()
+
 if __name__ == '__main__':
     app.run()
