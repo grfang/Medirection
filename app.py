@@ -62,7 +62,8 @@ def signup(phone_number, firstname, lastname, role, language):
         lang_codes = json.loads(f.read())
 
     user_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-    cursor.execute("INSERT INTO users(id, phonenumber, firstName, lastName, role, language) VALUES('%s', '%s', '%s', '%s', '%s', '%s') RETURNING id;" % (user_id, phone_number, firstname, lastname, role, lang_codes[language]))
+    pfp_id = random.randint(0,7)
+    cursor.execute("INSERT INTO users(id, phonenumber, firstName, lastName, role, language, pfp_id) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s') RETURNING id;" % (user_id, phone_number, firstname, lastname, role, lang_codes[language], pfp_id))
     conn.commit()
     user_id = cursor.fetchone()
     if user_id:
@@ -85,13 +86,15 @@ def get_dashboard(user_id):
     cursor.execute("SELECT channelid, doctorid, summary FROM channels WHERE user_id = '%s';" % (user_id))
     chatpage_info = cursor.fetchall() # chatpage_info[0] = channelid, chatpage_info[1] = doctorid, chatpage_info[2] = summary
     for idx in range(len(chatpage_info)):
-        cursor.execute("SELECT firstname, lastname FROM users WHERE id = '%s';" % (chatpage_info[idx][1]))
+        cursor.execute("SELECT firstname, lastname, pfp_id FROM users WHERE id = '%s';" % (chatpage_info[idx][1]))
         doctorTuple = cursor.fetchone()
         doctorName = doctorTuple[0] + " " + doctorTuple[1]
-        chatpage_info[idx] = (doctorName, chatpage_info[idx][1], chatpage_info[idx][0], chatpage_info[idx][2])
+        cursor.execute("SELECT pfpurl FROM pfps WHERE pfpid = '%d';" % (doctorTuple[2]))
+        doctorPfp = cursor.fetchone()
+        chatpage_info[idx] = (doctorName, chatpage_info[idx][1], chatpage_info[idx][0], chatpage_info[idx][2], doctorPfp[0])
     
     if chatpage_info:
-        blurb_list = [{'doctorname': chatpage_info[idx][0], 'doctorid': chatpage_info[idx][1], 'chatpageid': chatpage_info[idx][2], 'summary': chatpage_info[idx][3]} for idx in range(len(chatpage_info))]
+        blurb_list = [{'doctorname': chatpage_info[idx][0], 'doctorid': chatpage_info[idx][1], 'channelid': chatpage_info[idx][2], 'summary': chatpage_info[idx][3], 'doctor_pfp': chatpage_info[idx][4]} for idx in range(len(chatpage_info))]
         return jsonify({'chatpage_info': blurb_list})
     else:
         return jsonify({'chatpage_info': None})
@@ -102,9 +105,22 @@ def get_messages(channelid):
     chatroom_messages = cursor.fetchall()
     cursor.execute("SELECT status FROM channels WHERE channelid = '%s';" % (channelid))
     channel_status = cursor.fetchone()
+    cursor.execute("SELECT doctorid FROM channels WHERE channelid = '%s';" % (channelid))
+    doctor_id = cursor.fetchone()
+    cursor.execute("SELECT firstname, lastname FROM users WHERE id = '%s';" % (doctor_id[0]))
+    doctor_name = cursor.fetchone()
+    doctor_name = doctor_name[0] + " " + doctor_name[1]
+    for idx in range(len(chatroom_messages)):
+        query = "SELECT pfp_id FROM users WHERE id = %s;"
+        cursor.execute(query, (chatroom_messages[idx][3]))
+        pfp_id = cursor.fetchone()
+        query = "SELECT pfpurl FROM pfps WHERE pfpid = %s;"
+        cursor.execute(query, (pfp_id[0]))
+        pfp_url = cursor.fetchone()
+        chatroom_messages[idx] = (chatroom_messages[idx][0], chatroom_messages[idx][1], chatroom_messages[idx][2], chatroom_messages[idx][3], chatroom_messages[idx][4], chatroom_messages[idx][5], pfp_url[0])
     
     if chatroom_messages:
-        return jsonify({'messages': [{'ogaudiourl': chatroom_messages[idx][0], 'transcription': chatroom_messages[idx][1], 'translation': chatroom_messages[idx][2], 'senderid': chatroom_messages[idx][3], 'timestamp': chatroom_messages[idx][4], 'transaudiourl': chatroom_messages[idx][5]} for idx in range(len(chatroom_messages))], 'channel_status': channel_status[0]})
+        return jsonify({'messages': [{'ogaudiourl': chatroom_messages[idx][0], 'transcription': chatroom_messages[idx][1], 'translation': chatroom_messages[idx][2], 'senderid': chatroom_messages[idx][3], 'timestamp': chatroom_messages[idx][4], 'transaudiourl': chatroom_messages[idx][5], 'doctorpfp': chatroom_messages[idx][6]} for idx in range(len(chatroom_messages))], 'channel_status': channel_status[0], 'doctorname': doctor_name})
     else:
         return jsonify({'messages': None})
 
@@ -162,7 +178,13 @@ def send_message(audio_url, channel_id, doctor_id, sender_id):
     query = "INSERT INTO messages(messageid, channelid, timestamp, senderid, transcription, translation, ogaudiourl) VALUES(%s, %s, %s, %s, %s, %s, %s, %s)"
     cursor.execute(query, (message_id, channel_id, timestamp, sender_id, transcription, translation, audio_url, ""))
     conn.commit()
-    return jsonify({'transcription': transcription, 'translation': translation, 'message_id': message_id})
+    query = "SELECT pfp_id FROM users WHERE id = %s;"
+    cursor.execute(query, (sender_id))
+    pfp_id = cursor.fetchone()
+    query = "SELECT pfpurl FROM pfps WHERE id = %s;"
+    cursor.execute(query, (pfp_id[0]))
+    pfp_url = cursor.fetchone()
+    return jsonify({'transcription': transcription, 'translation': translation, 'message_id': message_id, 'pfp': pfp_url[0]})
 
 @app.route('/receive', methods=['POST'])
 def receive_message(translation, receiver_id, message_id):
@@ -189,8 +211,18 @@ def receive_message(translation, receiver_id, message_id):
     query = "UPDATE messages SET transaudiourl = %s WHERE messageid = %s;"
     cursor.execute(query, (blob.public_url, message_id))
     conn.commit()
+    
+    query = "SELECT senderid FROM messages WHERE messageid = %s;"
+    cursor.execute(query, (message_id))
+    sender_id = cursor.fetchone()
+    query = "SELECT pfp_id FROM users WHERE id = %s;"
+    cursor.execute(query, (sender_id[0]))
+    pfp_id = cursor.fetchone()
+    query = "SELECT pfpurl FROM pfps WHERE pfpid = %s;"
+    cursor.execute(query, (pfp_id[0]))
+    pfp_url = cursor.fetchone()
 
-    return jsonify({'url': blob.public_url})
+    return jsonify({'url': blob.public_url, 'pfp': pfp_url[0]})
 
 @app.route('/receive/norm', methods=['GET'])
 def change_speed_norm(translation, receiver_id):
