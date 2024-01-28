@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 from deepgram import DeepgramClient, PrerecordedOptions
 from google.cloud import translate, texttospeech
+from openai import OpenAI
 
 from firebase_admin import credentials, initialize_app, storage
 cred = credentials.Certificate("./service-account.json")
@@ -23,6 +24,8 @@ PROJECT_ID = "medirection"
 PARENT = f"projects/{PROJECT_ID}"
 TRANSLATION_CLIENT = translate.TranslationServiceClient()
 TTS_CLIENT = texttospeech.TextToSpeechClient()
+GPT_CLIENT = OpenAI()
+DEEPGRAM_CLIENT = DeepgramClient()
 
 # Replace these variables with your PostgreSQL connection details
 DB_USER = 'postgres'
@@ -85,7 +88,7 @@ def get_dashboard(user_id):
 
 @app.route('/chatroom', methods=['GET'])
 def get_messages(channelid):
-    cursor.execute("SELECT ogaudiourl, transcription, translation, senderid, timestamp, transaudiourl FROM messages WHERE channelid = '%s' SORT BY timestamp;" % (channelid))
+    cursor.execute("SELECT ogaudiourl, transcription, translation, senderid, timestamp, transaudiourl FROM messages WHERE channelid = '%s' ORDER BY timestamp;" % (channelid))
     chatroom_messages = cursor.fetchall()
     cursor.execute("SELECT status FROM channels WHERE channelid = '%s';" % (channelid))
     channel_status = cursor.fetchone()
@@ -102,14 +105,13 @@ def get_transcription(audio, sender_id):
     
     try:
         # call deepgram to get transscription
-        deepgram = DeepgramClient()
         options = PrerecordedOptions(
             model="nova",
             smart_format=True,
             summarize="v2",
             language=lang
         )
-        url_response = deepgram.listen.prerecorded.v("1").transcribe_url(
+        url_response = DEEPGRAM_CLIENT.listen.prerecorded.v("1").transcribe_url(
             {"url": audio}, options
         )
         return url_response.results.channels[0].alternatives[0].transcript
@@ -252,10 +254,64 @@ def change_speed_double(translation, receiver_id):
 
     return jsonify({'url': blob.public_url})
 
+def summarize(convo, doctor_lang_name, patient_lang_name):
+    chat_completion = GPT_CLIENT.chat.completions.create(
+        messages=[
+            {"role": "system", "content": "You are a helper at a hospital whose job is to provide concise summaries of conversations during appointments and rephrase them in simple terms that someone in middle school could understand. Please read the following chat logs between a doctor and a patient. The messages from the doctor will be in " + doctor_lang_name + " and the messages patient will be in " + patient_lang_name + ", switching back and forth, separated by new lines. Provide a short 3 line summary of the conversation in english."},
+            {
+                "role": "user",
+                "content": "Here is the chat log: Avez-vous eu des réactions au nouveau médicament?\n Nada demasiado severo, solo un par de erupciones.\n Cela a-t-il aidé à améliorer votre qualité de sommeil?\n Sí, definitivamente puedo ver una diferencia.\n"
+                # "content": "Here is the chat log: Have you had any reactions to the new medication?\n Nothing too severe, just a couple of rashes.\n Has it helped improve your sleep quality?\n Yes, I can definitely see a difference.\n"
+            },
+            {
+                "role": "assistant",
+                "content": "Rashes as effect of new sleep medication."
+            },
+            {
+                "role": "user",
+                "content": "Here is the chat log: " + convo
+            }
+        ],
+        model="gpt-3.5-turbo",
+    )
+    print("chat_completion: ", chat_completion)
+
+def generate_todos(channel_id):
+    pass
+
 @app.route('/close', methods=['POST'])
 def close(channel_id):
     query = "UPDATE channels SET status = 'closed' WHERE channelid = %s;"
     cursor.execute(query, (channel_id))
+    conn.commit()
+
+    query = "SELECT transcription FROM messages WHERE channelid = %s ORDER BY timestamp ASC;"
+    cursor.execute(query, (channel_id))
+    message_list = cursor.fetchall()
+    
+    convo = ""
+    for idx in range(len(message_list)):
+        convo += message_list[idx][0] + "\n"
+    
+    query = "SELECT doctorid, patientid FROM channels WHERE channelid = %s;"
+    cursor.execute(query, (channel_id))
+    chatters = cursor.fetchone()
+    
+    with open('codes_to_lang.json', 'r') as f:
+        codes_to_lang = json.loads(f.read())
+
+    query = "SELECT language FROM users WHERE id = %s;"
+
+    cursor.execute(query, (chatters[0]))
+    doctor_language_code = cursor.fetchone()
+    doctor_lang_name = codes_to_lang[doctor_language_code[0]]
+
+    cursor.execute(query, (chatters[1]))
+    patient_language_code = cursor.fetchone()
+    patient_lang_name= codes_to_lang[patient_language_code[0]]
+
+    summary = summarize(convo, doctor_lang_name, patient_lang_name)
+    todoList = generate_todos(channel_id)
 
 @app.route('/create', methods=['GET', 'POST'])
 def create(doctor_id, phone_number):
@@ -281,6 +337,27 @@ def change_language(user_id, language):
     query = "UPDATE users SET language = %s WHERE id = %s;"
     cursor.execute(query, (lang_codes[language], user_id))
     conn.commit()
+    
+    return jsonify({'exit_code': 0})
+    
+@app.route('/actionplan', methods=['GET'])
+def get_action_plans(user_id):
+    query = "SELECT doctorid, actions FROM todos WHERE userid = %s;"
+    cursor.execute(query, (user_id))
+    todo_info = cursor.fetchall()
+    for idx in range(len(todo_info)):
+        query = "SELECT firstname, lastname FROM users WHERE id = %s;"
+        cursor.execute(query, (todo_info[idx][0]))
+        doctorTuple = cursor.fetchone()
+        doctorName = doctorTuple[0] + " " + doctorTuple[1]
+        todo_info[idx] = (doctorName, todo_info[idx][1])
+    
+    print({'todos': [{'doctor_name': todo_info[idx][0], 'todo_list': todo_info[idx][1]}] for idx in range(len(todo_info))})
+    
+    if todo_info:
+        return jsonify({'todos': [{'doctor_name': todo_info[idx][0], 'todo_list': todo_info[idx][1]}] for idx in range(len(todo_info))})
+    else:
+        return jsonify({'todos': None})
 
 if __name__ == '__main__':
     app.run()
